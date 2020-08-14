@@ -3,6 +3,11 @@ from flask import request
 import json
 import config
 import SimpleChatProcessor
+from atten_model import AttentionChat
+import socket
+#processor = SimpleChatProcessor.SimpleChatProcessor()
+processor = AttentionChat()
+
 import socket
 processor = SimpleChatProcessor.SimpleChatProcessor()
 app = Flask(__name__)

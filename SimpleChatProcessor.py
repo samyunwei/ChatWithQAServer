@@ -1,11 +1,13 @@
 import os
+from atten_model import AttentionChat
+
 
 class SimpleChatProcessor(object):
     def __init__(self):
         """
         init model
         """
-        pass
+        self.model = AttentionChat()
 
     def process(self, msg):
         """
@@ -14,6 +16,6 @@ class SimpleChatProcessor(object):
         :param msg:
         :return:
         """
-        intent = "test"
-
-        return intent
+        retlist = self.model.process(msg)
+        ret = "".join(retlist)
+        return ret

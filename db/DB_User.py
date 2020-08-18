@@ -22,15 +22,13 @@ class User:
                 cursor.close()
                 return False
             else:
-                self.name = row[0]["name"]
-                self.age = row[0]["age"]
-                self.name = row[0]["name"]
+                self.name = row[0][1]
+                self.age = row[0][2]
                 cursor.close()
                 return True
         except sqlite3.Error as e:
             print(e)
             return False, e
-
 
     def update(self) -> (bool, sqlite3.Error):
         try:
@@ -61,3 +59,21 @@ class User:
         except sqlite3.Error as e:
             print(e)
             return False, e
+
+
+def loadUsers(conn):
+    users = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id,name,age FROM user")
+        row = cursor.fetchall()
+        for eachrow in row:
+            user = User(conn)
+            user.id = eachrow[0]
+            user.name = eachrow[1]
+            user.age = eachrow[2]
+            users.append(user)
+        return users
+    except sqlite3.Error as e:
+        print(e)
+        return users, e

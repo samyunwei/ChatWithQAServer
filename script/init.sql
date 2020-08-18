@@ -25,3 +25,4 @@ create table user
 	age int
 );
 
+insert into user(id, name, age) values ('anonymous','anonymous',0);

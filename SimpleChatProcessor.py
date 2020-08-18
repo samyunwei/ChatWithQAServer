@@ -1,6 +1,6 @@
 import os
 from atten_model import AttentionChat
-
+from ChatController import ChatController
 
 class SimpleChatProcessor(object):
     def __init__(self):
@@ -8,6 +8,7 @@ class SimpleChatProcessor(object):
         init model
         """
         self.model = AttentionChat()
+
 
     def process(self, msg):
         """

@@ -1,13 +1,13 @@
-import grpc
-import server_rpc.pb.SimpleChatbot_pb2_grpc
-import server_rpc.pb.SimpleChatbot_pb2
-from concurrent import futures
 import logging
-import server_rpc.SimpleChatBotServerImp
+from concurrent import futures
+import grpc
+
 import SimpleChatProcessor
+import server_rpc.SimpleChatBotServerImp
+import server_rpc.pb.SimpleChatbot_pb2
+import server_rpc.pb.SimpleChatbot_pb2_grpc
 
 ADDR = "[::]:50052"
-
 
 def serve():
     s = grpc.server(futures.ThreadPoolExecutor(max_workers=10))

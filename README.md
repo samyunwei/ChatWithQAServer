@@ -15,7 +15,7 @@
 ```
 ### gRPC
 ```shell script
-    python3 gRPCServe.py 
+    python3 gRPCServer.py 
 ```
 
 

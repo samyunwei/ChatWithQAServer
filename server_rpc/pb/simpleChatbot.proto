@@ -8,9 +8,11 @@ service SimpleChatBotServer {
 message ChatRequest {
     string ids = 1;
     string data = 2;
+    int32 seq = 3;
 }
 
 message ChatReply {
     string ids = 1;
     string data = 2;
+    int32 seq = 3;
 }

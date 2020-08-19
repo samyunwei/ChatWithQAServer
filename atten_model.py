@@ -15,9 +15,9 @@ import jieba
 import os
 import pickle as pkl
 
+path = "./"
+data_pkl = "pkl/data.pkl"
 
-path = "/Users/piguanghua/Downloads/ChatWithQAServer-master/"
-data_pkl = path + "pkl/data.pkl"
 
 def save_vocab(en_dict, en_total_words):
     if os.path.isfile(data_pkl):

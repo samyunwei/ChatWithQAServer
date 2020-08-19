@@ -25,12 +25,31 @@ def chat():
         id = request.args["id"]
     seq = controller.addUserSeq(id)
     controller.logMessage(id, seq, 1, msg)
-    rep = controller.getAsk(request.data)
+    rep = controller.getAsk(msg)
     if rep is None:
         rep = processor.process(msg)
     seq = controller.addUserSeq(id)
     controller.logMessage(id, seq, 2, rep)
     return makeReq(rep, seq, None)
+
+
+@app.route("/dict/<method>")
+def ChatDictCtrl(method):
+    res = {}
+    succ = False
+    if method != "reload":
+        key = request.args["key"]
+        value = None
+        if method != "delete":
+            value = request.args["value"]
+        succ, err = controller.ChatDictCtrl(method, key, value)
+        if succ is False:
+            res["errMsg"] = str(err)
+    else:
+        succ, dict = controller.reloadDict()
+        res["dict"] = dict
+    res["succ"] = succ
+    return json.dumps(res)
 
 
 def makeReq(msg, seq, errorMsg):

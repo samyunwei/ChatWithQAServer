@@ -12,7 +12,7 @@ class ChatLog:
         try:
             cursor.execute(sql)
             self.conn.commit()
-            return True
+            return True, None
         except sqlite3.Error as e:
             print(e)
             return False, e

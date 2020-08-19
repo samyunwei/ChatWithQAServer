@@ -47,5 +47,26 @@ class ChatController:
         self.lock.release()
         return self.user_count[id]
 
+    def ChatDictCtrl(self, method, key, value) -> (bool, sqlite3.Error):
+        succ = False
+        err = None
+        self.lock.acquire()
+        if method == "insert":
+            succ, err = self.chatDict.insert(key, value)
+        elif method == "update":
+            succ, err = self.chatDict.update(key, value)
+        elif method == "delete":
+            succ, err = self.chatDict.delete(key)
+        else:
+            succ, err = False, ValueError("UnSupport Method!")
+        self.lock.release()
+        return succ, err
+
+    def reloadDict(self):
+        self.lock.acquire()
+        self.dict = self.chatDict.select()
+        self.lock.release()
+        return True, self.dict
+
     def close(self):
         self.conn.close()

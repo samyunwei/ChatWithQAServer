@@ -20,12 +20,12 @@ class User:
             row = cursor.fetchall()
             if len(row) == 0:
                 cursor.close()
-                return False
+                return False, sqlite3.Error("not FOUND")
             else:
                 self.name = row[0][1]
                 self.age = row[0][2]
                 cursor.close()
-                return True
+                return True, None
         except sqlite3.Error as e:
             print(e)
             return False, e
@@ -35,7 +35,7 @@ class User:
             cursor = self.conn.cursor()
             cursor.execute("UPDATE user set name = '%s' and age = %d where id = '%s' " % (self.name, self.age, self.id))
             self.conn.commit()
-            return True
+            return True, None
         except sqlite3.Error as e:
             print(e)
             return False, e
@@ -45,7 +45,7 @@ class User:
             cursor = self.conn.cursor()
             cursor.execute("insert into user(id,name,age) values('%s','%s',%d)" % (self.id, self.name, self.age))
             self.conn.commit()
-            return True
+            return True, None
         except sqlite3.Error as e:
             print(e)
             return False, e
@@ -55,7 +55,7 @@ class User:
             cursor = self.conn.cursor()
             cursor.execute("DELETE from user where  id = '%s'" % self.id)
             self.conn.commit()
-            return True
+            return True, None
         except sqlite3.Error as e:
             print(e)
             return False, e
@@ -73,7 +73,7 @@ def loadUsers(conn):
             user.name = eachrow[1]
             user.age = eachrow[2]
             users.append(user)
-        return users
+        return users, None
     except sqlite3.Error as e:
         print(e)
         return users, e

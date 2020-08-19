@@ -29,7 +29,31 @@ class ChatDict:
             cursor.execute(sql)
             self.conn.commit()
             cursor.close()
-            return True
+            return True, None
+        except sqlite3.Error as e:
+            print(e)
+            return False, e
+
+    def update(self, key, value) -> (bool, sqlite3.Error):
+        cursor = self.conn.cursor()
+        sql = "update dict set value = '%s' where key = '%s'" % (key, value)
+        try:
+            cursor.execute(sql)
+            self.conn.commit()
+            cursor.close()
+            return True, None
+        except sqlite3.Error as e:
+            print(e)
+            return False, e
+
+    def delete(self, key) -> (bool, sqlite3.Error):
+        cursor = self.conn.cursor()
+        sql = "delete from dict where key = '%s'" % key
+        try:
+            cursor.execute(sql)
+            self.conn.commit()
+            cursor.close()
+            return True, None
         except sqlite3.Error as e:
             print(e)
             return False, e

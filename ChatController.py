@@ -3,6 +3,8 @@ from db.DB_ChatLog import ChatLog
 from db.DB_User import User
 from db.DB_ChatDict import ChatDict
 from db.DB_User import loadUsers
+from db.DB_ChatDict import cleanPunctuation
+from db.DB_ChatDict import unicodeToUTF8
 import random
 import threading
 
@@ -20,15 +22,19 @@ class ChatController:
 
     def getAsk(self, quest):
         self.lock.acquire()
+        quest = cleanPunctuation(quest)
+        quest = unicodeToUTF8(quest)
         ask = None
         if self.dict.__contains__(quest):
             ask = self.dict[quest]
+            index = random.randrange(0, len(ask))
+            ask = ask[index]
         self.lock.release()
         return ask
 
-    def logMessage(self, id, seq, role, msg):
+    def logMessage(self, id, seq, role, msg, type=-1):
         self.lock.acquire()
-        ret = self.chatLog.insert(self.serialnum, id, seq, role, msg)
+        ret = self.chatLog.insert(self.serialnum, id, seq, role, msg, type)
         self.lock.release()
         return ret
 
@@ -50,13 +56,15 @@ class ChatController:
     def ChatDictCtrl(self, method, key, value) -> (bool, sqlite3.Error):
         succ = False
         err = None
+        key = unicodeToUTF8(key)
+        value = unicodeToUTF8(value)
         self.lock.acquire()
         if method == "insert":
-            succ, err = self.chatDict.insert(key, value)
+            succ, err = self.chatDict.insert(key, value, 0)
         elif method == "update":
-            succ, err = self.chatDict.update(key, value)
+            succ, err = self.chatDict.update(key, value, 0)
         elif method == "delete":
-            succ, err = self.chatDict.delete(key)
+            succ, err = self.chatDict.delete(key, value)
         else:
             succ, err = False, ValueError("UnSupport Method!")
         self.lock.release()

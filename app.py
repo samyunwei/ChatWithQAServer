@@ -1,6 +1,6 @@
 import json
 
-from flask import Flask
+from flask import Flask, Response
 from flask import request
 from flask_cors import CORS
 
@@ -11,13 +11,15 @@ from atten_model import AttentionChat
 # processor = SimpleChatProcessor.SimpleChatProcessor()
 processor = AttentionChat()
 controller = ChatController()
-
 processor = SimpleChatProcessor.SimpleChatProcessor()
 app = Flask(__name__)
+
 CORS(app)
+
 
 @app.route('/chat')
 def chat():
+    chat_type = -1
     msg = request.args["msg"]
     if msg is None:
         return makeReq(None, "No have args")
@@ -25,12 +27,14 @@ def chat():
     if request.args.__contains__("id"):
         id = request.args["id"]
     seq = controller.addUserSeq(id)
-    controller.logMessage(id, seq, 1, msg)
+    controller.logMessage(id, seq, 1, msg, chat_type)
+    chat_type = 0
     rep = controller.getAsk(msg)
     if rep is None:
+        chat_type = 1
         rep = processor.process(msg)
     seq = controller.addUserSeq(id)
-    controller.logMessage(id, seq, 2, rep)
+    controller.logMessage(id, seq, 2, rep, chat_type)
     return makeReq(rep, seq, None)
 
 
@@ -40,9 +44,7 @@ def ChatDictCtrl(method):
     succ = False
     if method != "reload":
         key = request.args["key"]
-        value = None
-        if method != "delete":
-            value = request.args["value"]
+        value = request.args["value"]
         succ, err = controller.ChatDictCtrl(method, key, value)
         if succ is False:
             res["errMsg"] = str(err)
@@ -50,7 +52,7 @@ def ChatDictCtrl(method):
         succ, dict = controller.reloadDict()
         res["dict"] = dict
     res["succ"] = succ
-    return json.dumps(res)
+    return Response(json.dumps(res, ensure_ascii=False), mimetype='application/json;charset=utf-8')
 
 
 def makeReq(msg, seq, errorMsg):
@@ -60,10 +62,12 @@ def makeReq(msg, seq, errorMsg):
     else:
         res["reply"] = msg
     res["seq"] = seq
-    return json.dumps(res)
+    rep = Response(json.dumps(res, ensure_ascii=False), mimetype='application/json;charset=utf-8')
+    return rep
 
 
 if __name__ == '__main__':
+    app.config['JSON_AS_ASCII'] = False
     app.run(
         host='0.0.0.0',
         port=9997

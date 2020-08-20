@@ -5,10 +5,10 @@ class ChatLog:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def insert(self, serialnum, id, seq, role, meesage) -> (bool, sqlite3.Error):
+    def insert(self, serialnum, id, seq, role, meesage, chat_type) -> (bool, sqlite3.Error):
         cursor = self.conn.cursor()
-        sql = "insert into chat(serialnum, id, seq, role, message) values (%d,'%s',%d,%d,'%s')" % (
-            serialnum, id, seq, role, meesage)
+        sql = "insert into chat(serialnum, id, seq, role, message,type) values (%d,'%s',%d,%d,'%s',%d)" % (
+            serialnum, id, seq, role, meesage, chat_type)
         try:
             cursor.execute(sql)
             self.conn.commit()

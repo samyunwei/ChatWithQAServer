@@ -8,8 +8,6 @@ import SimpleChatProcessor
 from ChatController import ChatController
 from atten_model import AttentionChat
 
-# processor = SimpleChatProcessor.SimpleChatProcessor()
-processor = AttentionChat()
 controller = ChatController()
 processor = SimpleChatProcessor.SimpleChatProcessor()
 app = Flask(__name__)
@@ -32,10 +30,10 @@ def chat():
     rep = controller.getAsk(msg)
     if rep is None:
         chat_type = 1
-        rep = processor.process(msg)
+        rep, chat_type = processor.process(msg, chat_type)
     seq = controller.addUserSeq(id)
     controller.logMessage(id, seq, 2, rep, chat_type)
-    return makeReq(rep, seq, None)
+    return makeReq(rep, seq, "")
 
 
 @app.route("/dict/<method>")
@@ -57,7 +55,7 @@ def ChatDictCtrl(method):
 
 def makeReq(msg, seq, errorMsg):
     res = dict()
-    if errorMsg is not None:
+    if len(errorMsg) is not 0:
         res["errorMsg"] = errorMsg
     else:
         res["reply"] = msg

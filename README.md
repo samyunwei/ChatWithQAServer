@@ -21,10 +21,10 @@
 
 ## 测试
 ```shell script
-  curl -X GET http://{host}:{port}/chat?msg=hello
+  curl -X GET http://{host}:{port}/chat?msg=hello #获取聊天对话
+  curl -X GET http://{host}:{port}/dict?{method}?key=xxx&value=xxx #字典API
 ```
 
 ## 接下来的工作
-    1.将模型放到工程里
-    2.模型代码实现输入输出接口
-    3.客户端服务端接口联调  
+    1. 两个模型切换的阈值判断
+    2. 文档筹备

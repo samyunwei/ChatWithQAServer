@@ -1,6 +1,5 @@
 import sqlite3
 from db.DB_ChatLog import ChatLog
-from db.DB_User import User
 from db.DB_ChatDict import ChatDict
 from db.DB_User import loadUsers
 from db.DB_ChatDict import cleanPunctuation

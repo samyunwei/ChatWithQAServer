@@ -8,6 +8,7 @@ nonghang_model_pkl = "pkl/nonghang_model.pkl"
 nonghang_question = "pkl/nonghang.pkl"
 stopword_path = "pkl/stopwords.txt"
 
+
 class NongChatProcessor(object):
     def __init__(self):
         """
@@ -17,7 +18,7 @@ class NongChatProcessor(object):
         self.index = nonghang_model["index"]
         self.tfidf = nonghang_model["tfidf"]
         self.dictionary = nonghang_model["dictionary"]
-
+        self.model = nonghang_model
         # 获取停用词
         self.stopwords = set()
         file = open(stopword_path, 'r', encoding='UTF-8')
@@ -25,11 +26,8 @@ class NongChatProcessor(object):
             for line in fin:
                 self.stopwords.add(line.strip())
 
-
         dataset = pickle.load(open(nonghang_question, "rb"))
         self.reply = dataset["reply"]
-
-
 
     def process(self, msg):
         """
@@ -50,3 +48,7 @@ class NongChatProcessor(object):
         data = np.array(sims)
 
         return self.reply.iloc[np.argmax(data)]
+
+    def calcRate(self, msg):
+        # self.model.state_dict()["in_embed.weight"]
+        return True

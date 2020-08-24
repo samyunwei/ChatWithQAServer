@@ -13,12 +13,13 @@ class SimpleChatBotServicerImp(SimpleChatbot_pb2_grpc.SimpleChatBotServerService
         print("Seq2SeqChatBot:New Req  ids %s" % request.ids)
         id = request.ids
         seq = controller.addUserSeq(id)
+        chat_type = 0
         controller.logMessage(id, seq, 1, request.data)
         rep = ChatReply()
         rep.ids = request.ids
         rep.data = controller.getAsk(request.data)
         if rep.data is None:
-            rep.data = self.processor.process(request.data)
+            rep.data, chat_type = self.processor.process(request.data, chat_type)
         seq = controller.addUserSeq(id)
         controller.logMessage(id, seq, 2, rep.data)
         return rep

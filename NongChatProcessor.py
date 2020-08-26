@@ -50,5 +50,7 @@ class NongChatProcessor(object):
         return self.reply.iloc[np.argmax(data)]
 
     def calcRate(self, msg):
-        # self.model.state_dict()["in_embed.weight"]
-        return True
+        if str.find(msg) != -1:
+            return True
+        else:
+            return False

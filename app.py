@@ -29,7 +29,6 @@ def chat():
     chat_type = 0
     rep = controller.getAsk(msg)
     if rep is None:
-        chat_type = 1
         rep, chat_type = processor.process(msg, chat_type)
     seq = controller.addUserSeq(id)
     controller.logMessage(id, seq, 2, rep, chat_type)

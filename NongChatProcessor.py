@@ -50,7 +50,7 @@ class NongChatProcessor(object):
         return self.reply.iloc[np.argmax(data)]
 
     def calcRate(self, msg):
-        if str.find(msg) != -1:
+        if str.find(msg,"农行") != -1:
             return True
         else:
             return False

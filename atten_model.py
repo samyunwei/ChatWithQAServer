@@ -53,6 +53,9 @@ def set_interact_args():
     parser.add_argument('--max_len', type=int, default=25, help='每个utterance的最大长度,超过指定长度则进行截断')
     parser.add_argument('--max_history_len', type=int, default=5, help="dialogue history的最大长度")
     parser.add_argument('--no_cuda', action='store_true', help='不使用GPU进行预测')
+    parser.add_argument('--host', type=str,default=5, help="服务器地址")
+    parser.add_argument('--port', type=int,default=5, help="服务器端口")
+    parser.add_argument('run', type=bool,default=True, help="服务器运行")
     return parser.parse_args()
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
@@ -88,7 +91,7 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
     return logits
 
 
-path = "/Users/piguanghua/Downloads/ChatWithQAServer-master/"
+path = "./"
 
 
 def create_logger(args):

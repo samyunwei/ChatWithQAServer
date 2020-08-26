@@ -17,9 +17,10 @@ class SimpleChatBotServicerImp(SimpleChatbot_pb2_grpc.SimpleChatBotServerService
         controller.logMessage(id, seq, 1, request.data)
         rep = ChatReply()
         rep.ids = request.ids
-        rep.data = controller.getAsk(request.data)
-        if rep.data is None:
-            rep.data, chat_type = self.processor.process(request.data, chat_type)
+        ret_str = controller.getAsk(request.data)
+        if ret_str is None:
+            ret_str, chat_type = self.processor.process(request.data, chat_type)
+        rep.data = ret_str
         seq = controller.addUserSeq(id)
         controller.logMessage(id, seq, 2, rep.data)
         return rep

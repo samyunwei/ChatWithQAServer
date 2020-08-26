@@ -1,7 +1,6 @@
-import os
+import pickle
 
 import jieba
-import pickle
 import numpy as np
 
 nonghang_model_pkl = "pkl/nonghang_model.pkl"
@@ -19,6 +18,7 @@ class NongChatProcessor(object):
         self.tfidf = nonghang_model["tfidf"]
         self.dictionary = nonghang_model["dictionary"]
         self.model = nonghang_model
+        self.dict = ["农行", "贷款", "信用卡", "工资", "查询", "账单","存钱","利息"]
         # 获取停用词
         self.stopwords = set()
         file = open(stopword_path, 'r', encoding='UTF-8')
@@ -50,7 +50,7 @@ class NongChatProcessor(object):
         return self.reply.iloc[np.argmax(data)]
 
     def calcRate(self, msg):
-        if str.find(msg,"农行") != -1:
-            return True
-        else:
-            return False
+        for eachWord in self.dict:
+            if str.find(msg, eachWord) != -1:
+                return True
+        return False

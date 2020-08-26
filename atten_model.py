@@ -4,218 +4,118 @@
 # @FileName: atten_model.py
 # @Software: PyCharm
 
-from collections import Counter
-import numpy as np
-import random
-
+import transformers
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import jieba
 import os
-import pickle as pkl
+import json
+import random
+import numpy as np
+import argparse
+#from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+from tqdm import tqdm
+from torch.nn import DataParallel
+import logging
+from transformers.modeling_gpt2 import GPT2Config, GPT2LMHeadModel
+from transformers import BertTokenizer
+from os.path import join, exists
+from itertools import zip_longest, chain
+# from chatbot.model import DialogueGPT2Model
+#from dataset import MyDataset
+from torch.utils.data import Dataset, DataLoader
+from torch.nn import CrossEntropyLoss
+from sklearn.model_selection import train_test_split
+#from train import create_model
+import torch.nn.functional as F
 
-path = "./"
-data_pkl = "pkl/data.pkl"
-
-
-def save_vocab(en_dict, en_total_words):
-    if os.path.isfile(data_pkl):
-        dataset = pkl.load(open(data_pkl, "rb"))
-        en_dict = dataset['en_dict']
-        en_total_words = dataset['en_total_words']
-
-    else:
-        dataset = {}
-        dataset["en_dict"] = en_dict
-        dataset["en_total_words"] = en_total_words
-        pkl.dump(dataset, open(data_pkl, "wb"))
-
-    return en_dict, en_total_words
-
-if os.path.isfile(data_pkl):
-    en_dict,en_total_words = save_vocab(None,None)
-    cn_dict, cn_total_words = en_dict,en_total_words
-
-else:
-    pass
+PAD = '[PAD]'
+pad_id = 0
 
 
-inv_en_dict = {v: k for k, v in en_dict.items()}
-inv_cn_dict = {v: k for k, v in cn_dict.items()}
+def set_interact_args():
+    """
+    Sets up the training arguments.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--device', default='0', type=str, required=False, help='生成设备')
+    parser.add_argument('--temperature', default=1, type=float, required=False, help='生成的temperature')
+    parser.add_argument('--topk', default=8, type=int, required=False, help='最高k选1')
+    parser.add_argument('--topp', default=0, type=float, required=False, help='最高积累概率')
+    parser.add_argument('--model_config', default='config/config.json', type=str, required=False,
+                        help='模型参数')
+    parser.add_argument('--log_path', default='data/interacting.log', type=str, required=False, help='interact日志存放位置')
+    parser.add_argument('--voca_path', default='vocabulary/vocab_small.txt', type=str, required=False, help='选择词库')
+    parser.add_argument('--dialogue_model_path', default='./dialogue_model', type=str, required=False, help='对话模型路径')
+    parser.add_argument('--save_samples_path', default="sample/", type=str, required=False, help="保存聊天记录的文件路径")
+    parser.add_argument('--repetition_penalty', default=1.0, type=float, required=False,
+                        help="重复惩罚参数，若生成的对话重复性较高，可适当提高该参数")
+    parser.add_argument('--seed', type=int, default=None, help='设置种子用于生成随机数，以使得训练的结果是确定的')
+    parser.add_argument('--max_len', type=int, default=25, help='每个utterance的最大长度,超过指定长度则进行截断')
+    parser.add_argument('--max_history_len', type=int, default=5, help="dialogue history的最大长度")
+    parser.add_argument('--no_cuda', action='store_true', help='不使用GPU进行预测')
+    return parser.parse_args()
+
+def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
+    """ Filter a distribution of logits using top-k and/or nucleus (top-p) filtering
+        Args:
+            logits: logits distribution shape (vocabulary size)
+            top_k > 0: keep only top k tokens with highest probability (top-k filtering).
+            top_p > 0.0: keep the top tokens with cumulative probability >= top_p (nucleus filtering).
+                Nucleus filtering is described in Holtzman et al. (http://arxiv.org/abs/1904.09751)
+        From: https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317
+    """
+    assert logits.dim() == 1  # batch size 1 for now - could be updated for more but the code would be less clear
+    top_k = min(top_k, logits.size(-1))  # Safety check
+    if top_k > 0:
+        # Remove all tokens with a probability less than the last token of the top-k
+        # torch.topk()返回最后一维最大的top_k个元素，返回值为二维(values,indices)
+        # ...表示其他维度由计算机自行推断
+        indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
+        logits[indices_to_remove] = filter_value  # 对于topk之外的其他元素的logits值设为负无穷
+
+    if top_p > 0.0:
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True)  # 对logits进行递减排序
+        cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+
+        # Remove tokens with cumulative probability above the threshold
+        sorted_indices_to_remove = cumulative_probs > top_p
+        # Shift the indices to the right to keep also the first token above the threshold
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+        sorted_indices_to_remove[..., 0] = 0
+
+        indices_to_remove = sorted_indices[sorted_indices_to_remove]
+        logits[indices_to_remove] = filter_value
+    return logits
 
 
-dropout = 0.15
-embed_size = hidden_size = 300
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-class Encoder(nn.Module):
-    def __init__(self, vocab_size, embed_size, enc_hidden_size, dec_hidden_size, dropout=0.2):
-        super(Encoder, self).__init__()
-        self.embed = nn.Embedding(vocab_size, embed_size)
-        self.rnn = nn.GRU(embed_size, enc_hidden_size, batch_first=True, bidirectional=True)
-        self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(enc_hidden_size * 2, dec_hidden_size)
-
-    def forward(self, x, lengths):
-        sorted_len, sorted_idx = lengths.sort(0, descending=True)
-        x_sorted = x[sorted_idx.long()]
-        embedded = self.dropout(self.embed(x_sorted))
-
-        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, sorted_len.long().cpu().data.numpy(),
-                                                            batch_first=True)
-        packed_out, hid = self.rnn(packed_embedded)
-        out, _ = nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True)
-        _, original_idx = sorted_idx.sort(0, descending=False)
-        out = out[original_idx.long()].contiguous()
-        hid = hid[:, original_idx.long()].contiguous()
-
-        hid = torch.cat([hid[-2], hid[-1]], dim=1)
-        hid = torch.tanh(self.fc(hid)).unsqueeze(0)
-
-        return out, hid
+path = "/Users/piguanghua/Downloads/ChatWithQAServer-master/"
 
 
-class Attention(nn.Module):
-    def __init__(self, enc_hidden_size, dec_hidden_size):
-        super(Attention, self).__init__()
+def create_logger(args):
+    """
+    将日志输出到日志文件和控制台
+    """
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
 
-        self.enc_hidden_size = enc_hidden_size
-        self.dec_hidden_size = dec_hidden_size
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s')
 
-        self.linear_in = nn.Linear(enc_hidden_size * 2, dec_hidden_size, bias=False)
-        self.linear_out = nn.Linear(enc_hidden_size * 2 + dec_hidden_size, dec_hidden_size)
+    # 创建一个handler，用于写入日志文件
+    file_handler = logging.FileHandler(
+        filename=args.log_path)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
 
-    def forward(self, output, context, mask):
-        # output: batch_size, output_len, dec_hidden_size
-        # context: batch_size, context_len, 2*enc_hidden_size
+    # 创建一个handler，用于将日志输出到控制台
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    console.setFormatter(formatter)
+    logger.addHandler(console)
 
-        batch_size = output.size(0)
-        output_len = output.size(1)
-        input_len = context.size(1)
+    return logger
 
-        context_in = self.linear_in(context.view(batch_size * input_len, -1)).view(
-            batch_size, input_len, -1)  # batch_size, context_len, dec_hidden_size
-
-        # context_in.transpose(1,2): batch_size, dec_hidden_size, context_len
-        # output: batch_size, output_len, dec_hidden_size
-        attn = torch.bmm(output, context_in.transpose(1, 2))
-        # batch_size, output_len, context_len
-
-        attn.data.masked_fill(mask, -1e6)
-
-        attn = F.softmax(attn, dim=2)
-        # batch_size, output_len, context_len
-
-        context = torch.bmm(attn, context)
-        # batch_size, output_len, enc_hidden_size
-
-        output = torch.cat((context, output), dim=2)  # batch_size, output_len, hidden_size*2
-
-        output = output.view(batch_size * output_len, -1)
-        output = torch.tanh(self.linear_out(output))
-        output = output.view(batch_size, output_len, -1)
-        return output, attn
-
-
-class Decoder(nn.Module):
-    def __init__(self, vocab_size, embed_size, enc_hidden_size, dec_hidden_size, dropout=0.2):
-        super(Decoder, self).__init__()
-        self.embed = nn.Embedding(vocab_size, embed_size)
-        self.attention = Attention(enc_hidden_size, dec_hidden_size)
-        self.rnn = nn.GRU(embed_size, hidden_size, batch_first=True)
-        self.out = nn.Linear(dec_hidden_size, vocab_size)
-        self.dropout = nn.Dropout(dropout)
-
-    def create_mask(self, x_len, y_len):
-        # a mask of shape x_len * y_len
-        device = x_len.device
-        max_x_len = x_len.max()
-        max_y_len = y_len.max()
-        x_mask = torch.arange(max_x_len, device=x_len.device)[None, :] < x_len[:, None]
-        y_mask = torch.arange(max_y_len, device=x_len.device)[None, :] < y_len[:, None]
-        #mask = (1 - x_mask[:, :, None] * y_mask[:, None, :]).byte()
-        mask = (~ x_mask[:, :, None] * y_mask[:, None, :]).byte()
-
-        return mask
-
-    def forward(self, ctx, ctx_lengths, y, y_lengths, hid):
-        sorted_len, sorted_idx = y_lengths.sort(0, descending=True)
-        y_sorted = y[sorted_idx.long()]
-        hid = hid[:, sorted_idx.long()]
-
-        y_sorted = self.dropout(self.embed(y_sorted))  # batch_size, output_length, embed_size
-
-        packed_seq = nn.utils.rnn.pack_padded_sequence(y_sorted, sorted_len.long().cpu().data.numpy(), batch_first=True)
-        out, hid = self.rnn(packed_seq, hid)
-        unpacked, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
-        _, original_idx = sorted_idx.sort(0, descending=False)
-        output_seq = unpacked[original_idx.long()].contiguous()
-        hid = hid[:, original_idx.long()].contiguous()
-
-        mask = self.create_mask(y_lengths, ctx_lengths)
-
-        output, attn = self.attention(output_seq, ctx, mask)
-        output = F.log_softmax(self.out(output), -1)
-
-        return output, hid, attn
-
-class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder):
-        super(Seq2Seq, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-
-    def forward(self, x, x_lengths, y, y_lengths):
-        encoder_out, hid = self.encoder(x, x_lengths)
-        output, hid, attn = self.decoder(ctx=encoder_out,
-                                         ctx_lengths=x_lengths,
-                                         y=y,
-                                         y_lengths=y_lengths,
-                                         hid=hid)
-        return output, attn
-
-    def translate(self, x, x_lengths, y, max_length=100):
-        encoder_out, hid = self.encoder(x, x_lengths)
-        preds = []
-        batch_size = x.shape[0]
-        attns = []
-        for i in range(max_length):
-            output, hid, attn = self.decoder(ctx=encoder_out,
-                                             ctx_lengths=x_lengths,
-                                             y=y,
-                                             y_lengths=torch.ones(batch_size).long().to(y.device),
-                                             hid=hid)
-            y = output.max(2)[1].view(batch_size, 1)
-            preds.append(y)
-            attns.append(attn)
-        return torch.cat(preds, 1), torch.cat(attns, 1)
-
-def convert_string_bos(string):
-    line = string.strip().split("\t")
-    en = []
-    data = list(jieba.cut(string, HMM=False))
-
-    en.append(["BOS"] + data + ["EOS"])
-    return en
-
-def encode(en_sentences, en_dict, sort_by_len=True):
-    '''
-        Encode the sequences.
-    '''
-    length = len(en_sentences)
-    out_en_sentences = [[en_dict.get(w, 0) for w in sent] for sent in en_sentences]
-
-    # sort sentences by english lengths
-    def len_argsort(seq):
-        return sorted(range(len(seq)), key=lambda x: len(seq[x]))
-
-    # 把中文和英文按照同样的顺序排序
-    if sort_by_len:
-        sorted_index = len_argsort(out_en_sentences)
-        out_en_sentences = [out_en_sentences[i] for i in sorted_index]
-
-    return out_en_sentences
 
 
 class AttentionChat():
@@ -225,24 +125,29 @@ class AttentionChat():
         初始化模型
         :return:
         """
-        encoder = Encoder(vocab_size=en_total_words,
-                          embed_size=embed_size,
-                          enc_hidden_size=hidden_size,
-                          dec_hidden_size=hidden_size,
-                          dropout=dropout)
-        decoder = Decoder(vocab_size=cn_total_words,
-                          embed_size=embed_size,
-                          enc_hidden_size=hidden_size,
-                          dec_hidden_size=hidden_size,
-                          dropout=dropout)
+        args = set_interact_args()
+        #logger = create_logger(args)
+        # 当用户使用GPU,并且GPU可用时
+        args.cuda = torch.cuda.is_available() and not args.no_cuda
+        device = 'cuda' if args.cuda else 'cpu'
+        #logger.info('using device:{}'.format(device))
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.device
+        tokenizer = BertTokenizer(vocab_file=path + args.voca_path)
+        model = GPT2LMHeadModel.from_pretrained(path + args.dialogue_model_path)
+        model.to(device)
+        model.eval()
+        if args.save_samples_path:
+            if not os.path.exists(path + args.save_samples_path):
+                os.makedirs(path + args.save_samples_path)
+            samples_file = open(path + args.save_samples_path + '/samples.txt', 'w', encoding='utf8')
+            samples_file.write("聊天记录{}:\n".format(datetime.now()))
+            # 存储聊天记录，每个utterance以token的id的形式进行存储
+        self.history = []
 
-        model = Seq2Seq(encoder, decoder)
-        model = model.to(device)
-        save_path = path + "save_model/atten.model"
-        checkpoint = torch.load(save_path, map_location=torch.device('cpu'))
-        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-
+        self.tokenizer = tokenizer
         self.model = model
+        self.args = args
+        self.device = device
 
     def process(self, msg):
         """
@@ -259,23 +164,39 @@ class AttentionChat():
         #model = initModel()
         model = self.model
         string = msg
-        dev_en = convert_string_bos(string)
+        #self.history = []
+        self.history.append(self.tokenizer.encode(string))
+        input_ids = [self.tokenizer.cls_token_id]  # 每个input以[CLS]为开头
 
-        dev_en = encode(dev_en, en_dict)
-
-        mb_x = torch.from_numpy(np.array(dev_en[0]).reshape(1, -1)).long().to(device)
-        mb_x_len = torch.from_numpy(np.array([len(dev_en[0])])).long().to(device)
-        bos = torch.Tensor([[cn_dict["BOS"]]]).long().to(device)
-
-        translation, attn = model.translate(mb_x, mb_x_len, bos)
-        translation = [inv_cn_dict[i] for i in translation.data.cpu().numpy().reshape(-1)]
-        trans = []
-        for word in translation:
-            if word != "EOS":
-                trans.append(word)
-            else:
+        for history_id, history_utr in enumerate(self.history[-self.args.max_history_len:]):
+            input_ids.extend(history_utr)
+            input_ids.append(self.tokenizer.sep_token_id)
+        curr_input_tensor = torch.tensor(input_ids).long().to(self.device)
+        generated = []
+        # 最多生成max_len个token
+        for _ in range(self.args.max_len):
+            outputs = model(input_ids=curr_input_tensor)
+            next_token_logits = outputs[0][-1, :]
+            # 对于已生成的结果generated中的每个token添加一个重复惩罚项，降低其生成概率
+            for id in set(generated):
+                next_token_logits[id] /= self.args.repetition_penalty
+            next_token_logits = next_token_logits / self.args.temperature
+            # 对于[UNK]的概率设为无穷小，也就是说模型的预测结果不可能是[UNK]这个token
+            next_token_logits[self.tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
+            filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=self.args.topk, top_p=self.args.topp)
+            # torch.multinomial表示从候选集合中无放回地进行抽取num_samples个元素，权重越高，抽到的几率越高，返回元素的下标
+            next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
+            if next_token == self.tokenizer.sep_token_id:  # 遇到[SEP]则表明response生成结束
                 break
-        return trans
+            generated.append(next_token.item())
+            curr_input_tensor = torch.cat((curr_input_tensor, next_token), dim=0)
+            # his_text = tokenizer.convert_ids_to_tokens(curr_input_tensor.tolist())
+            # print("his_text:{}".format(his_text))
+        self.history.append(generated)
+        text = self.tokenizer.convert_ids_to_tokens(generated)
+
+
+        return "".join(text)
 
 
 
